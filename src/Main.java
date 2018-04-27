@@ -22,6 +22,8 @@
 *                                                                              *
 ==============================================================================*/
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,6 +36,8 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.math3.random.MersenneTwister;
 import org.apache.commons.math3.random.RandomGenerator;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 /**
  * Application single entry point class.
@@ -45,6 +49,11 @@ public class Main {
 	 * Pseudo-random number generator.
 	 */
 	private static final RandomGenerator PRNG = new MersenneTwister();
+
+	/**
+	 * Index of the none symbol in the array of symbols.
+	 */
+	private static final int NO_SYMBOL_INDEX = -1;
 
 	/**
 	 * List of symbols names.
@@ -212,6 +221,78 @@ public class Main {
 	 *            Name of the game reels sheet.
 	 */
 	private static void loadGameStructure(String inputFileName, String reelsSheetName) {
+		XSSFWorkbook workbook = null;
+		try {
+			workbook = new XSSFWorkbook(new FileInputStream(new File(inputFileName)));
+		} catch (Exception e) {
+			System.out.println("Input file " + inputFileName + " is not usable!");
+			System.exit(0);
+		}
+
+		XSSFSheet sheet = null;
+
+		/*
+		 * Load common game information.
+		 */
+		sheet = workbook.getSheet("Summary");
+		int numberOfReels = (int) sheet.getRow(1).getCell(1).getNumericCellValue();
+		int numberOfRows = (int) sheet.getRow(2).getCell(1).getNumericCellValue();
+		int numberOfLines = (int) sheet.getRow(3).getCell(1).getNumericCellValue();
+		int numberOfSymbols = (int) sheet.getRow(4).getCell(1).getNumericCellValue();
+
+		/*
+		 * Store all symbol names and mark special like wilds and scatters.
+		 */
+		sheet = workbook.getSheet("Symbols");
+		for (int s = 1; s <= numberOfSymbols; s++) {
+			SYMBOLS_NAMES.add(sheet.getRow(s).getCell(0).getStringCellValue());
+			SYMBOLS_NUMBERS.add((int) sheet.getRow(s).getCell(2).getNumericCellValue());
+		}
+
+		/*
+		 * Load pay table.
+		 */
+		sheet = workbook.getSheet("Paytable");
+//		paytable = new int[numberOfReels + 1][numberOfSymbols];
+//		for (int r = 0; r < numberOfSymbols; r++) {
+//			for (int c = 0; c < numberOfReels; c++) {
+//				paytable[c][r - 1] = (int) (sheet.getRow(r).getCell(numberOfReels - c + 1).getNumericCellValue());
+//			}
+//		}
+
+		/*
+		 * Load base game reels.
+		 */
+		sheet = workbook.getSheet(reelsSheetName);
+		strips = new String[numberOfReels][];
+		for (int c = 0; c < strips.length; c++) {
+			/*
+			 * Calculate length of the reel.
+			 */
+			int length = 0;
+			for (int r = 0; true; r++) {
+				try {
+					sheet.getRow(r).getCell(c).getStringCellValue();
+				} catch (Exception e) {
+					break;
+				}
+
+				length++;
+			}
+
+			/*
+			 * Read the reel itself.
+			 */
+			strips[c] = new String[length];
+			for (int r = 0; r < strips[c].length; r++) {
+				strips[c][r] = sheet.getRow(r).getCell(c).getStringCellValue();
+			}
+		}
+
+		/*
+		 * Load size of the line.
+		 */
+		line = new int[numberOfReels];
 	}
 
 	/**
@@ -220,6 +301,60 @@ public class Main {
 	 * @author Todor Balabanov
 	 */
 	private static void initialize() {
+		/*
+		 * Transform symbols names to integer values.
+		 */
+		reels = new int[strips.length][];
+		for (int i = 0; i < strips.length; i++) {
+			reels[i] = new int[strips[i].length];
+			for (int j = 0; j < strips[i].length; j++) {
+				for (int s = 0; s < SYMBOLS_NAMES.size(); s++) {
+					if (SYMBOLS_NAMES.get(s).trim().equals(strips[i][j].trim()) == true) {
+						reels[i][j] = s;
+						break;
+					}
+				}
+			}
+		}
+
+		/*
+		 * Initialize view with no symbols.
+		 */
+		for (int i = 0; i < line.length; i++) {
+			line[i] = NO_SYMBOL_INDEX;
+		}
+
+		/*
+		 * Adjust multipliers.
+		 */
+		singleLineBet = 1;
+
+		/*
+		 * Calculate total bet.
+		 */
+		totalBet = singleLineBet;
+
+		/*
+		 * Allocate memory for the counters.
+		 */
+		symbolMoney = new long[paytable.length][SYMBOLS_NAMES.size()];
+		symbolsHitRate = new long[paytable.length][SYMBOLS_NAMES.size()];
+		winsHistogram = new long[numberOfBins];
+		// TODO Counters should be initialized with zeros.
+
+		/*
+		 * Calculate highest win according total bet and pay table values.
+		 */
+		highestPaytableWin = 0;
+		for (int i = 0; i < paytable.length; i++) {
+			for (int j = 0; j < paytable[i].length; j++) {
+				if (highestPaytableWin < paytable[i][j]) {
+					highestPaytableWin = paytable[i][j];
+				}
+			}
+		}
+
+		gameOutcomes.clear();
 	}
 
 	/**
@@ -237,6 +372,85 @@ public class Main {
 	 * @author Todor Balabanov
 	 */
 	private static void printDataStructures() {
+		System.out.println("Paytable:");
+		for (int i = 0; i < paytable.length; i++) {
+			System.out.print("\t" + i + " of");
+		}
+		System.out.println();
+		for (int j = 0; j < paytable[0].length; j++) {
+			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
+			for (int i = 0; i < paytable.length; i++) {
+				System.out.print(paytable[i][j] + "\t");
+			}
+			System.out.println();
+		}
+		System.out.println();
+
+		/* Vertical print of the reels. */ {
+			int max = 0;
+			for (int i = 0; reels != null && i < reels.length; i++) {
+				if (max < reels[i].length) {
+					max = reels[i].length;
+				}
+			}
+			System.out.println("Game Reels:");
+			for (int j = 0; reels != null && j < max; j++) {
+				for (int i = 0; i < reels.length; i++) {
+					if (j < reels[i].length) {
+						System.out.print(SYMBOLS_NAMES.get(reels[i][j]));
+					}
+					System.out.print("\t");
+				}
+				System.out.print("\t");
+				for (int i = 0; i < reels.length; i++) {
+					if (j < reels[i].length) {
+						System.out.print(SYMBOLS_NUMBERS.get(reels[i][j]));
+					}
+					System.out.print("\t");
+				}
+				System.out.println();
+			}
+			System.out.println();
+		}
+
+		System.out.println("Game Reels:");
+		/* Count symbols in reels. */ {
+			int[][] counters = new int[paytable.length - 1][SYMBOLS_NAMES.size()];
+			// TODO Counters should be initialized with zeros.
+			for (int i = 0; reels != null && i < reels.length; i++) {
+				for (int j = 0; j < reels[i].length; j++) {
+					counters[i][reels[i][j]]++;
+				}
+			}
+			for (int i = 0; reels != null && i < reels.length; i++) {
+				System.out.print("\tReel " + (i + 1));
+			}
+			System.out.println();
+			for (int j = 0; j < SYMBOLS_NAMES.size(); j++) {
+				System.out.print(SYMBOLS_NAMES.get(j) + "\t");
+				for (int i = 0; i < counters.length; i++) {
+					System.out.print(counters[i][j] + "\t");
+				}
+				System.out.println();
+			}
+			System.out.println("---------------------------------------------");
+			System.out.print("Total:\t");
+			long combinations = (reels == null) ? 0L : 1L;
+			for (int i = 0; i < counters.length; i++) {
+				int sum = 0;
+				for (int j = 0; j < counters[0].length; j++) {
+					sum += counters[i][j];
+				}
+				System.out.print(sum + "\t");
+				if (sum != 0) {
+					combinations *= sum;
+				}
+			}
+			System.out.println();
+			System.out.println("---------------------------------------------");
+			System.out.println("Combinations:\t" + combinations);
+		}
+		System.out.println();
 	}
 
 	/**
@@ -246,11 +460,156 @@ public class Main {
 	}
 
 	/**
+	 * Single reels spin to fill view with symbols.
+	 *
+	 * @param reels
+	 *            Reels strips.
+	 *
+	 * @author Todor Balabanov
+	 */
+	private static void nextCombination(int[] reelsStops) {
+		reelsStops[0] += 1;
+		for (int i = 0; i < reelsStops.length; i++) {
+			if (reelsStops[i] >= reels[i].length) {
+				reelsStops[i] = 0;
+				if (i < reelsStops.length - 1) {
+					reelsStops[i + 1] += 1;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Single reels spin to fill view with symbols.
+	 *
+	 * @param reels
+	 *            Reels strips.
+	 *
+	 * @author Todor Balabanov
+	 */
+	private static void spin(int[][] reels) {
+		for (int i = 0; i < line.length && i < reels.length; i++) {
+			int stop = -1;
+			if (bruteForce == true) {
+				stop = reelsStops[i];
+			} else {
+				stop = PRNG.nextInt(reels[i].length);
+			}
+
+			line[i] = reels[i][stop];
+		}
+	}
+
+	/**
+	 * Calculate win in particular line.
+	 *
+	 * @param line
+	 *            Single line.
+	 *
+	 * @return Calculated win.
+	 *
+	 * @author Todor Balabanov
+	 */
+	private static int lineWin(int[] line) {
+		int win = 0;
+
+		/*
+		 * Check all possible win patterns.
+		 */
+		for (int pattern[] : paytable) {
+			boolean found = true;
+			for (int i = 0; i < line.length; i++) {
+				if (pattern[i] != line[i]) {
+					found = false;
+					break;
+				}
+			}
+
+			/*
+			 * If the pattern is found just take the multiplier.
+			 */
+			if (found == true) {
+				win = pattern[line.length] * totalBet;
+				break;
+			}
+		}
+
+		return (win);
+	}
+
+	/**
+	 * Update histogram information when there is a win.
+	 * 
+	 * @param histogram
+	 *            Histogram array.
+	 * @param biggest
+	 *            Expected biggest win.
+	 * @param win
+	 *            Win value.
+	 */
+	private static void updateHistogram(long[] histogram, int biggest, int win) {
+		/*
+		 * If the win is bigger than highest according pay table values mark it in the
+		 * last bin.
+		 */
+		if (win >= biggest) {
+			histogram[histogram.length - 1]++;
+			return;
+		}
+
+		int index = histogram.length * win / biggest;
+		histogram[index]++;
+	}
+
+	/**
 	 * Play single base game.
 	 *
 	 * @author Todor Balabanov
 	 */
 	private static void singleGame() {
+		/*
+		 * In brute force mode reels stops are not random.
+		 */
+		if (bruteForce == true) {
+			nextCombination(reelsStops);
+		}
+
+		/*
+		 * Spin is working even in brute force mode.
+		 */
+		spin(reels);
+
+		/*
+		 * Win accumulated by lines.
+		 */
+		int win = lineWin(line);
+
+		/*
+		 * Keep values for mathematical expectation and standard deviation calculation.
+		 */
+		gameOutcomes.add(win);
+
+		/*
+		 * Add win to the statistics.
+		 */
+		wonMoney += win;
+		if (maxWin < win) {
+			maxWin = win;
+		}
+
+		/*
+		 * Count base game hit rate.
+		 */
+		if (win > 0) {
+			hitRate++;
+		}
+
+		/*
+		 * Count in the histogram.
+		 */
+		if (win > 0) {
+			updateHistogram(winsHistogram, highestPaytableWin * totalBet, win);
+		}
 	}
 
 	/**
@@ -259,6 +618,107 @@ public class Main {
 	 * @author Todor Balabanov
 	 */
 	private static void printStatistics() {
+		System.out.println("Won money:\t" + wonMoney);
+		System.out.println("Lost money:\t" + lostMoney);
+		System.out.println("Total Number of Games:\t" + totalNumberOfGames);
+		System.out.println();
+		System.out.println("Total RTP:\t" + ((double) wonMoney / (double) lostMoney) + "\t\t"
+				+ (100.0D * (double) wonMoney / (double) lostMoney) + "%");
+		System.out.println();
+		System.out.println("Hit Frequency in the Game:\t" + ((double) hitRate / (double) totalNumberOfGames) + "\t\t"
+				+ (100.0D * (double) hitRate / (double) totalNumberOfGames) + "%");
+		System.out.println();
+
+		System.out.println("Max Win in the Game:\t" + maxWin);
+		System.out.println();
+
+		System.out.println("Game Symbols RTP:");
+		System.out.print("\t");
+		for (int i = 0; i < symbolMoney.length; i++) {
+			System.out.print("" + i + "of\t");
+		}
+		System.out.println();
+		for (int j = 0; j < symbolMoney[0].length; j++) {
+			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
+			for (int i = 0; i < symbolMoney.length; i++) {
+				System.out.print((double) symbolMoney[i][j] / (double) lostMoney + "\t");
+			}
+			System.out.println();
+		}
+		System.out.println();
+		System.out.println("Game Symbols Hit Rate:");
+		System.out.print("\t");
+		for (int i = 0; i < symbolsHitRate.length; i++) {
+			System.out.print("" + i + "of\t");
+		}
+		System.out.println();
+		for (int j = 0; j < symbolsHitRate[0].length; j++) {
+			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
+			for (int i = 0; i < symbolsHitRate.length; i++) {
+				System.out.print((double) symbolsHitRate[i][j] + "\t");
+			}
+			System.out.println();
+		}
+		System.out.println();
+		System.out.println("Game Symbols Hit Frequency:");
+		System.out.print("\t");
+		for (int i = 0; i < symbolsHitRate.length; i++) {
+			System.out.print("" + i + "of\t");
+		}
+		System.out.println();
+		for (int j = 0; j < symbolsHitRate[0].length; j++) {
+			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
+			for (int i = 0; i < symbolsHitRate.length; i++) {
+				System.out.print((double) symbolsHitRate[i][j] / (double) totalNumberOfGames + "\t");
+			}
+			System.out.println();
+		}
+		System.out.println();
+		System.out.println("Game Wins Histogram:");
+		/* Histogram. */ {
+			double sum = 0;
+			for (int i = 0; i < winsHistogram.length; i++) {
+				System.out.print(winsHistogram[i] + "\t");
+				sum += winsHistogram[i];
+			}
+			System.out.println();
+			for (int i = 0; i < winsHistogram.length; i++) {
+				System.out.print(100D * winsHistogram[i] / sum + "\t");
+			}
+			System.out.println();
+			for (int i = 0, bin = highestPaytableWin * totalBet
+					/ winsHistogram.length; i < winsHistogram.length; i++, bin += highestPaytableWin * totalBet
+							/ winsHistogram.length) {
+				System.out.print("< " + bin + "\t");
+			}
+		}
+		System.out.println();
+		System.out.print("Game Win Mean:\t");
+		/* Mean */ {
+			double mean = 0;
+			for (Integer value : gameOutcomes) {
+				mean += value;
+			}
+			mean /= gameOutcomes.size() != 0 ? gameOutcomes.size() : 1;
+			System.out.println(mean);
+		}
+		System.out.print("Game Win Standard Deviation:\t");
+		/* Standard Deviation */ {
+			double mean = 0;
+			for (Integer value : gameOutcomes) {
+				mean += value;
+			}
+			mean /= gameOutcomes.size() != 0 ? gameOutcomes.size() : 1;
+
+			double deviation = 0;
+			for (Integer value : gameOutcomes) {
+				deviation += (value - mean) * (value - mean);
+			}
+			deviation /= gameOutcomes.size() != 0 ? gameOutcomes.size() : 1;
+			deviation = Math.sqrt(deviation);
+			System.out.println(deviation);
+		}
+		System.out.println();
 	}
 
 	/**
