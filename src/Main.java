@@ -25,7 +25,10 @@
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -56,14 +59,29 @@ public class Main {
 	private static final int NO_SYMBOL_INDEX = -1;
 
 	/**
-	 * List of symbols names.
+	 * Index of the empty symbol in the array of symbols.
 	 */
-	private static final List<String> SYMBOLS_NAMES = new ArrayList<String>();
+	private static final int EMPTY_SYMBOL_INDEX = 0;
 
 	/**
 	 * List of symbols names.
 	 */
-	private static final List<Integer> SYMBOLS_NUMBERS = new ArrayList<Integer>();
+	private static final List<String> SYMBOLS_NAMES = new ArrayList<>();
+
+	/**
+	 * List of symbols names.
+	 */
+	private static final List<Integer> SYMBOLS_NUMBERS = new ArrayList<>();
+
+	/**
+	 * Mapping symbols names to symbols numbers.
+	 */
+	private static final Map<String, Integer> SYMBOLS_TO_NUMBERS = new HashMap<>();
+
+	/**
+	 * Mapping symbols numbers to symbols names.
+	 */
+	private static final Map<Integer, String> NUMBERS_TO_SYMBOLS = new HashMap<>();
 
 	/**
 	 * Slot game pay table.
@@ -91,12 +109,12 @@ public class Main {
 	private static int[] line = {};
 
 	/**
-	 * Total bet in single base game spin.
+	 * Total bet in single game spin.
 	 */
 	private static int singleLineBet = 0;
 
 	/**
-	 * Total bet in single base game spin.
+	 * Total bet in single game spin.
 	 */
 	private static int totalBet = 0;
 
@@ -116,22 +134,22 @@ public class Main {
 	private static List<Integer> gameOutcomes = new ArrayList<Integer>();
 
 	/**
-	 * Max amount of won money in base game.
+	 * Max amount of won money in game.
 	 */
 	private static long maxWin = 0L;
 
 	/**
-	 * Total number of base games played.
+	 * Total number of games played.
 	 */
 	private static long totalNumberOfGames = 0L;
 
 	/**
-	 * Hit rate of wins in base game.
+	 * Hit rate of wins in game.
 	 */
 	private static long hitRate = 0L;
 
 	/**
-	 * Brute force all winning combinations in base game only flag.
+	 * Brute force all winning combinations flag.
 	 */
 	private static boolean bruteForce = false;
 
@@ -146,17 +164,17 @@ public class Main {
 	private static int numberOfBins = 1000;
 
 	/**
-	 * Symbols win hit rate in base game.
+	 * Symbols win hit rate in the game.
 	 */
 	private static long[][] symbolMoney = {};
 
 	/**
-	 * Symbols hit rate in base game.
+	 * Symbols hit rate in the game.
 	 */
 	private static long[][] symbolsHitRate = {};
 
 	/**
-	 * Distribution of the wins according their amount in the base game.
+	 * Distribution of the wins according their amount in the game.
 	 */
 	private static long winsHistogram[] = {};
 
@@ -245,23 +263,47 @@ public class Main {
 		 */
 		sheet = workbook.getSheet("Symbols");
 		for (int s = 1; s <= numberOfSymbols; s++) {
-			SYMBOLS_NAMES.add(sheet.getRow(s).getCell(0).getStringCellValue());
-			SYMBOLS_NUMBERS.add((int) sheet.getRow(s).getCell(2).getNumericCellValue());
+			String name = sheet.getRow(s).getCell(0).getStringCellValue();
+			int number = (int) sheet.getRow(s).getCell(2).getNumericCellValue();
+
+			SYMBOLS_NAMES.add(name);
+			SYMBOLS_NUMBERS.add(number);
+
+			SYMBOLS_TO_NUMBERS.put(name, number);
+			NUMBERS_TO_SYMBOLS.put(number, name);
 		}
 
 		/*
 		 * Load pay table.
 		 */
 		sheet = workbook.getSheet("Paytable");
-//		paytable = new int[numberOfReels + 1][numberOfSymbols];
-//		for (int r = 0; r < numberOfSymbols; r++) {
-//			for (int c = 0; c < numberOfReels; c++) {
-//				paytable[c][r - 1] = (int) (sheet.getRow(r).getCell(numberOfReels - c + 1).getNumericCellValue());
-//			}
-//		}
+		List<Integer[]> rows = new ArrayList<>();
+		loop: for (int r = 0; true; r++) {
+			Integer row[] = new Integer[numberOfReels + 1];
+			for (int c = 0; c < numberOfReels; c++) {
+				try {
+					row[c] = SYMBOLS_TO_NUMBERS.get(sheet.getRow(r).getCell(c).getStringCellValue());
+				} catch (Exception e) {
+					break loop;
+				}
+			}
+			row[numberOfReels] = (int) sheet.getRow(r).getCell(numberOfReels).getNumericCellValue();
+			rows.add(row);
+		}
 
 		/*
-		 * Load base game reels.
+		 * Fill paytable array.
+		 */
+		paytable = new int[numberOfReels + 1][rows.size()];
+		for (int r = 0; r < rows.size(); r++) {
+			Integer[] row = rows.get(r);
+			for (int c = 0; c < row.length; c++) {
+				paytable[c][r] = row[c];
+			}
+		}
+
+		/*
+		 * Load game reels.
 		 */
 		sheet = workbook.getSheet(reelsSheetName);
 		strips = new String[numberOfReels][];
@@ -373,15 +415,11 @@ public class Main {
 	 */
 	private static void printDataStructures() {
 		System.out.println("Paytable:");
-		for (int i = 0; i < paytable.length; i++) {
-			System.out.print("\t" + i + " of");
-		}
-		System.out.println();
 		for (int j = 0; j < paytable[0].length; j++) {
-			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
-			for (int i = 0; i < paytable.length; i++) {
-				System.out.print(paytable[i][j] + "\t");
+			for (int i = 0; i < paytable.length - 1; i++) {
+				System.out.print(NUMBERS_TO_SYMBOLS.get(paytable[i][j]) + "\t");
 			}
+			System.out.print(paytable[paytable.length - 1][j]);
 			System.out.println();
 		}
 		System.out.println();
@@ -457,6 +495,36 @@ public class Main {
 	 * Shuffle loaded reals in stack of symbols.
 	 */
 	private static void shuffleReels() {
+		/*
+		 * Handle each reel by itself.
+		 */
+		for (int reel = 0; reel < reels.length; reel++) {
+			for (int changes = 0, a = -1, b = -1; changes < reels[reel].length; changes++) {
+				/*
+				 * Select random elements.
+				 */
+				do {
+					a = PRNG.nextInt(strips[reel].length);
+					b = PRNG.nextInt(strips[reel].length);
+				} while (reels[reel][a] == EMPTY_SYMBOL_INDEX || reels[reel][b] == EMPTY_SYMBOL_INDEX);
+
+				/*
+				 * Swap elements.
+				 */
+				int buffer = reels[reel][a];
+				reels[reel][a] = reels[reel][b];
+				reels[reel][b] = buffer;
+			}
+		}
+
+		/*
+		 * Fill strips according shuffling.
+		 */
+		for (int reel = 0; reel < reels.length; reel++) {
+			for (int element = 0; element < reels[reel].length; element++) {
+				strips[reel][element] = NUMBERS_TO_SYMBOLS.get(reels[reel][element]);
+			}
+		}
 	}
 
 	/**
@@ -562,7 +630,7 @@ public class Main {
 	}
 
 	/**
-	 * Play single base game.
+	 * Play single game.
 	 *
 	 * @author Todor Balabanov
 	 */
@@ -598,7 +666,7 @@ public class Main {
 		}
 
 		/*
-		 * Count base game hit rate.
+		 * Count game hit rate.
 		 */
 		if (win > 0) {
 			hitRate++;
@@ -802,13 +870,13 @@ public class Main {
 		}
 
 		/*
-		 * Base game reels sheet name.
+		 * Game reels sheet name.
 		 */
 		String reelsSheetName = "";
-		if (commands.hasOption("basereels") == true) {
-			reelsSheetName = commands.getOptionValue("basereels");
+		if (commands.hasOption("reels") == true) {
+			reelsSheetName = commands.getOptionValue("reels");
 		} else {
-			System.out.println("Base game reels sheet name is missing!");
+			System.out.println("Game reels sheet name is missing!");
 			System.out.println();
 			(new HelpFormatter()).printHelp("java Main", options, true);
 			System.out.println();
@@ -900,7 +968,7 @@ public class Main {
 		}
 
 		/*
-		 * Calculate all combinations in base game.
+		 * Calculate all combinations in the game.
 		 */
 		if (bruteForce == true) {
 			/*
