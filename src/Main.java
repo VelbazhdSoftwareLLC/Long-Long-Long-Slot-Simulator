@@ -166,12 +166,12 @@ public class Main {
 	/**
 	 * Symbols win hit rate in the game.
 	 */
-	private static long[][] symbolMoney = {};
+	private static long[] symbolsMoney = {};
 
 	/**
 	 * Symbols hit rate in the game.
 	 */
-	private static long[][] symbolsHitRate = {};
+	private static long[] symbolsHitRate = {};
 
 	/**
 	 * Distribution of the wins according their amount in the game.
@@ -379,8 +379,8 @@ public class Main {
 		/*
 		 * Allocate memory for the counters.
 		 */
-		symbolMoney = new long[paytable.length][SYMBOLS_NAMES.size()];
-		symbolsHitRate = new long[paytable.length][SYMBOLS_NAMES.size()];
+		symbolsMoney = new long[paytable[0].length];
+		symbolsHitRate = new long[paytable[0].length];
 		winsHistogram = new long[numberOfBins];
 		// TODO Counters should be initialized with zeros.
 
@@ -388,11 +388,9 @@ public class Main {
 		 * Calculate highest win according total bet and pay table values.
 		 */
 		highestPaytableWin = 0;
-		for (int i = 0; i < paytable.length; i++) {
-			for (int j = 0; j < paytable[i].length; j++) {
-				if (highestPaytableWin < paytable[i][j]) {
-					highestPaytableWin = paytable[i][j];
-				}
+		for (int j = 0; j < paytable[reels.length].length; j++) {
+			if (highestPaytableWin < paytable[reels.length][j]) {
+				highestPaytableWin = paytable[reels.length][j];
 			}
 		}
 
@@ -584,10 +582,10 @@ public class Main {
 		/*
 		 * Check all possible win patterns.
 		 */
-		for (int pattern[] : paytable) {
+		for (int j=0; j<paytable[0].length; j++) {
 			boolean found = true;
 			for (int i = 0; i < line.length; i++) {
-				if (pattern[i] != line[i]) {
+				if (paytable[i][j] != line[i]) {
 					found = false;
 					break;
 				}
@@ -597,7 +595,11 @@ public class Main {
 			 * If the pattern is found just take the multiplier.
 			 */
 			if (found == true) {
-				win = pattern[line.length] * totalBet;
+				win = paytable[line.length][j] * totalBet;
+				symbolsMoney[j] += win;
+				if (win > 0) {
+					symbolsHitRate[j]++;
+				}
 				break;
 			}
 		}
@@ -701,44 +703,29 @@ public class Main {
 		System.out.println();
 
 		System.out.println("Game Symbols RTP:");
-		System.out.print("\t");
-		for (int i = 0; i < symbolMoney.length; i++) {
-			System.out.print("" + i + "of\t");
-		}
-		System.out.println();
-		for (int j = 0; j < symbolMoney[0].length; j++) {
-			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
-			for (int i = 0; i < symbolMoney.length; i++) {
-				System.out.print((double) symbolMoney[i][j] / (double) lostMoney + "\t");
+		for (int j = 0; j < symbolsMoney.length; j++) {
+			for (int i = 0; i < reels.length; i++) {
+				System.out.print(NUMBERS_TO_SYMBOLS.get(paytable[i][j]) + "\t");
 			}
+			System.out.print((double) symbolsMoney[j] / (double) lostMoney + "\t");
 			System.out.println();
 		}
 		System.out.println();
 		System.out.println("Game Symbols Hit Rate:");
-		System.out.print("\t");
-		for (int i = 0; i < symbolsHitRate.length; i++) {
-			System.out.print("" + i + "of\t");
-		}
-		System.out.println();
-		for (int j = 0; j < symbolsHitRate[0].length; j++) {
-			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
-			for (int i = 0; i < symbolsHitRate.length; i++) {
-				System.out.print((double) symbolsHitRate[i][j] + "\t");
+		for (int j = 0; j < symbolsHitRate.length; j++) {
+			for (int i = 0; i < reels.length; i++) {
+				System.out.print(NUMBERS_TO_SYMBOLS.get(paytable[i][j]) + "\t");
 			}
+			System.out.print((double) symbolsHitRate[j] + "\t");
 			System.out.println();
 		}
 		System.out.println();
 		System.out.println("Game Symbols Hit Frequency:");
-		System.out.print("\t");
-		for (int i = 0; i < symbolsHitRate.length; i++) {
-			System.out.print("" + i + "of\t");
-		}
-		System.out.println();
-		for (int j = 0; j < symbolsHitRate[0].length; j++) {
-			System.out.print(SYMBOLS_NAMES.get(j) + "\t");
-			for (int i = 0; i < symbolsHitRate.length; i++) {
-				System.out.print((double) symbolsHitRate[i][j] / (double) totalNumberOfGames + "\t");
+		for (int j = 0; j < symbolsHitRate.length; j++) {
+			for (int i = 0; i < reels.length; i++) {
+				System.out.print(NUMBERS_TO_SYMBOLS.get(paytable[i][j]) + "\t");
 			}
+			System.out.print((double) symbolsHitRate[j] / (double) totalNumberOfGames + "\t");
 			System.out.println();
 		}
 		System.out.println();
