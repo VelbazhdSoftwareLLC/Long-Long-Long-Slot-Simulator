@@ -731,6 +731,12 @@ public class Main {
 		System.out.println();
 		System.out.println("Game Wins Histogram:");
 		/* Histogram. */ {
+			for (int i = 0, bin = highestPaytableWin * totalBet
+					/ winsHistogram.length; i < winsHistogram.length; i++, bin += highestPaytableWin * totalBet
+							/ winsHistogram.length) {
+				System.out.print("< " + bin + "\t");
+			}
+			System.out.println();
 			double sum = 0;
 			for (int i = 0; i < winsHistogram.length; i++) {
 				System.out.print(winsHistogram[i] + "\t");
@@ -741,11 +747,6 @@ public class Main {
 				System.out.print(100D * winsHistogram[i] / sum + "\t");
 			}
 			System.out.println();
-			for (int i = 0, bin = highestPaytableWin * totalBet
-					/ winsHistogram.length; i < winsHistogram.length; i++, bin += highestPaytableWin * totalBet
-							/ winsHistogram.length) {
-				System.out.print("< " + bin + "\t");
-			}
 		}
 		System.out.println();
 		System.out.print("Game Win Mean:\t");
